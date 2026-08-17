@@ -1,0 +1,37 @@
+{
+  "name": "karkata-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:server\"",
+    "dev:web": "vite --config web/vite.config.ts",
+    "dev:server": "tsx watch server/src/index.ts",
+    "build": "npm run build:web && npm run build:server",
+    "build:web": "tsc -p web/tsconfig.json && vite build --config web/vite.config.ts",
+    "build:server": "tsc -p server/tsconfig.json",
+    "typecheck": "tsc -p web/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@karkata-ai/core": "file:../karkata/packages/core",
+    "@karkata-ai/openai-compatible": "file:../karkata/packages/openai-compatible",
+    "@karkata-ai/ui": "file:../karkata/packages/ui",
+    "@fastify/cookie": "^10.0.1",
+    "@fastify/cors": "^10.0.2",
+    "@fastify/formbody": "^8.0.2",
+    "@fastify/helmet": "^13.0.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "fastify": "^5.2.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.3",
+    "@types/react-dom": "^19.0.2",
+    "concurrently": "^9.1.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}
