@@ -2,7 +2,9 @@
   "name": "karkata-demo",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:server\"",
     "dev:web": "vite --config web/vite.config.ts",
@@ -25,8 +27,10 @@
     "better-sqlite3": "^13.0.3",
     "fastify": "^5.2.1",
     "lucide-react": "^0.468.0",
+    "phaser": "^3.90.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",

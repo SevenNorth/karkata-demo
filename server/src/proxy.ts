@@ -17,7 +17,7 @@ export function prepareProxyRequest(input: unknown, config: ProxyConfig): Record
   if (!isRecord(input)) throw new ProxyRequestError('PROXY_INVALID_REQUEST', 'request body must be an object')
   for (const key of Object.keys(input)) if (!ALLOWED_FIELDS.has(key)) throw new ProxyRequestError('PROXY_INVALID_REQUEST', `unknown field: ${key}`)
   if (input.stream !== true) throw new ProxyRequestError('PROXY_INVALID_REQUEST', 'stream must be true')
-  if (!Array.isArray(input.messages) || input.messages.length > 64) throw new ProxyRequestError('PROXY_INVALID_REQUEST', 'messages must contain at most 64 items')
+  if (!Array.isArray(input.messages) || input.messages.length > 128) throw new ProxyRequestError('PROXY_INVALID_REQUEST', 'messages must contain at most 128 items')
   const messages = input.messages.map(validateMessage)
   const tools = input.tools === undefined ? undefined : validateTools(input.tools)
   return {
@@ -54,18 +54,18 @@ export async function requestProvider(
 function validateMessage(value: unknown): Record<string, unknown> {
   if (!isRecord(value) || typeof value.role !== 'string' || !ALLOWED_ROLES.has(value.role)) throw new ProxyRequestError('PROXY_INVALID_REQUEST', 'message role is invalid')
   const serialized = JSON.stringify(value)
-  if (serialized.length > 4_000) throw new ProxyRequestError('PROXY_INVALID_REQUEST', 'message content is too large')
+  if (serialized.length > 8_000) throw new ProxyRequestError('PROXY_INVALID_REQUEST', 'message content is too large')
   const allowed = new Set(['role', 'content', 'tool_calls', 'tool_call_id', 'name'])
   for (const key of Object.keys(value)) if (!allowed.has(key)) throw new ProxyRequestError('PROXY_INVALID_REQUEST', `unknown message field: ${key}`)
   return structuredClone(value)
 }
 
 function validateTools(value: unknown): Record<string, unknown>[] {
-  if (!Array.isArray(value) || value.length > 16) throw new ProxyRequestError('PROXY_INVALID_REQUEST', 'too many tools')
+  if (!Array.isArray(value) || value.length > 24) throw new ProxyRequestError('PROXY_INVALID_REQUEST', 'too many tools')
   return value.map((tool) => {
     if (!isRecord(tool) || tool.type !== 'function' || !isRecord(tool.function) || typeof tool.function.name !== 'string') throw new ProxyRequestError('PROXY_INVALID_REQUEST', 'tool definition is invalid')
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(tool.function.name)) throw new ProxyRequestError('PROXY_INVALID_REQUEST', 'tool name is invalid')
-    if (JSON.stringify(tool).length > 12_000) throw new ProxyRequestError('PROXY_INVALID_REQUEST', 'tool definition is too large')
+    if (JSON.stringify(tool).length > 16_000) throw new ProxyRequestError('PROXY_INVALID_REQUEST', 'tool definition is too large')
     return structuredClone(tool)
   })
 }

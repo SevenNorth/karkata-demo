@@ -25,6 +25,8 @@ const activeUsers = new Set<string>()
 let activeRequests = 0
 const userWindows = new Map<string, number[]>()
 const ipWindows = new Map<string, number[]>()
+const USER_MODEL_REQUESTS_PER_MINUTE = 30
+const IP_MODEL_REQUESTS_PER_MINUTE = 60
 const database = openDatabase(resolve(process.cwd(), process.env.SQLITE_PATH ?? 'data/karkata-demo.sqlite'))
 const sessionStore = new SqliteSessionStore(database)
 const quotaStore = new SqliteQuotaStore(database, {
@@ -104,7 +106,7 @@ app.post('/api/llm/chat/completions', { bodyLimit: 128 * 1024 }, async (request,
   if (!config) return reply.code(503).send({ code: 'PROXY_NOT_CONFIGURED', message: 'The model proxy is not configured.', requestId })
   let body: Record<string, unknown>
   try { body = prepareProxyRequest(request.body, config) } catch (error) { return sendProxyError(reply, error, requestId) }
-  if (!takeRateSlot(userWindows, session.user.id, 3) || !takeRateSlot(ipWindows, request.ip, 10)) return reply.code(429).send({ code: 'PROXY_RATE_LIMIT', message: 'Too many model requests.', requestId })
+  if (!takeRateSlot(userWindows, session.user.id, USER_MODEL_REQUESTS_PER_MINUTE) || !takeRateSlot(ipWindows, request.ip, IP_MODEL_REQUESTS_PER_MINUTE)) return reply.code(429).send({ code: 'PROXY_RATE_LIMIT', message: 'Too many model requests.', requestId })
   if (activeUsers.has(session.user.id) || activeRequests >= 10) return reply.code(429).send({ code: 'PROXY_CONCURRENCY_LIMIT', message: 'Another model request is already running.', requestId })
   let reservation
   try {
@@ -172,7 +174,7 @@ function proxyConfig(): ProxyConfig | null {
   const apiKey = process.env.LLM_API_KEY
   const model = process.env.LLM_MODEL
   if (!baseURL || !apiKey || !model) return null
-  return { baseURL, apiKey, model, maxOutputTokens: numberEnv('LLM_MAX_OUTPUT_TOKENS', 1500), timeoutMs: numberEnv('LLM_TIMEOUT_MS', 45_000) }
+  return { baseURL, apiKey, model, maxOutputTokens: numberEnv('LLM_MAX_OUTPUT_TOKENS', 3000), timeoutMs: numberEnv('LLM_TIMEOUT_MS', 600_000) }
 }
 
 function numberEnv(name: string, fallback: number): number {

@@ -23,8 +23,8 @@ describe('prepareProxyRequest', () => {
   })
 
   it('enforces message and tool limits', () => {
-    expect(() => prepareProxyRequest({ stream: true, messages: [{ role: 'user', content: 'x'.repeat(4001) }] }, config)).toThrow('message content is too large')
-    expect(() => prepareProxyRequest({ stream: true, messages: [], tools: Array.from({ length: 17 }, (_, index) => ({ type: 'function', function: { name: `tool_${index}`, parameters: {} } })) }, config)).toThrow('too many tools')
+    expect(() => prepareProxyRequest({ stream: true, messages: [{ role: 'user', content: 'x'.repeat(8001) }] }, config)).toThrow('message content is too large')
+    expect(() => prepareProxyRequest({ stream: true, messages: [], tools: Array.from({ length: 25 }, (_, index) => ({ type: 'function', function: { name: `tool_${index}`, parameters: {} } })) }, config)).toThrow('too many tools')
   })
 })
 
