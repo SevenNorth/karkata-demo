@@ -1,0 +1,26 @@
+services:
+  karkata-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: karkata-demo
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8787
+      SQLITE_PATH: /var/lib/karkata-demo/karkata-demo.sqlite
+    ports:
+      - "127.0.0.1:18787:8787"
+    volumes:
+      - karkata-demo-data:/var/lib/karkata-demo
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  karkata-demo-data:

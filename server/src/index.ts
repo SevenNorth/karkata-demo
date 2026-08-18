@@ -1,6 +1,7 @@
 import Fastify, { type FastifyReply } from 'fastify'
 import cookie from '@fastify/cookie'
 import helmet from '@fastify/helmet'
+import fastifyStatic from '@fastify/static'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -13,14 +14,18 @@ import { SqliteSessionStore, type DemoUser } from './session.js'
 
 loadDevelopmentEnv()
 
+const isProduction = process.env.NODE_ENV === 'production'
 const app = Fastify({ logger: { redact: ['req.headers.authorization', 'req.headers.cookie'] } })
 await app.register(cookie)
 await app.register(helmet, { contentSecurityPolicy: false })
+if (isProduction) {
+  await app.register(fastifyStatic, { root: resolve(process.cwd(), 'web/dist'), wildcard: false })
+  app.get('/*', async (_request, reply) => reply.sendFile('index.html'))
+}
 
 const oauthStates = new Map<string, { expiresAt: number }>()
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000
-const isProduction = process.env.NODE_ENV === 'production'
 const activeUsers = new Set<string>()
 let activeRequests = 0
 const userWindows = new Map<string, number[]>()
@@ -146,7 +151,7 @@ app.post('/api/llm/chat/completions', { bodyLimit: 128 * 1024 }, async (request,
 })
 
 const port = Number(process.env.PORT ?? 8787)
-await app.listen({ port, host: '127.0.0.1' })
+await app.listen({ port, host: process.env.HOST ?? (isProduction ? '0.0.0.0' : '127.0.0.1') })
 
 function githubConfig(): { clientId: string; clientSecret: string; callbackUrl: string } | null {
   const clientId = process.env.GITHUB_CLIENT_ID

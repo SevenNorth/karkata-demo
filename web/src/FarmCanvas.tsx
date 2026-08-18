@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react'
 import Phaser from 'phaser'
+import { getDayTransitionFrame } from './dayTransition'
 import type { FarmSimulation, FarmSnapshot } from './farmSimulation'
 
 const TILE = 48
 const WIDTH = 14 * TILE
 const HEIGHT = 9 * TILE
+const CROP_SPRITE_OFFSET_Y = -15
 
 export function FarmCanvas({ simulation }: { simulation: FarmSimulation }) {
   const host = useRef<HTMLDivElement>(null)
@@ -22,8 +24,11 @@ class FarmScene extends Phaser.Scene {
   private readonly getState: () => FarmSnapshot
   private playerSprite?: Phaser.GameObjects.Sprite
   private lastPlayerPosition?: { x: number; y: number }
+  private lastDay?: number
   private fieldSprites = new Map<string, Phaser.GameObjects.Sprite>()
   private cropSprites: Phaser.GameObjects.Sprite[] = []
+  private dayTransitionOverlay?: Phaser.GameObjects.Rectangle
+  private dayTransitionTween?: Phaser.Tweens.Tween
   constructor(getState: () => FarmSnapshot) { super('farm'); this.getState = getState }
   preload() {
     this.load.spritesheet('outdoors', '/assets/farm/spring-outdoors.png', { frameWidth: 16, frameHeight: 16 })
@@ -39,6 +44,7 @@ class FarmScene extends Phaser.Scene {
     this.createCharacterAnimations()
     this.playerSprite = this.add.sprite(0, 0, 'caroline', 0).setScale(2).setDepth(8)
     this.renderState(this.getState())
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.clearDayTransition())
   }
   renderState(state: FarmSnapshot) {
     for (const sprite of this.cropSprites) sprite.destroy()
@@ -49,9 +55,11 @@ class FarmScene extends Phaser.Scene {
       if (!ground) { ground = this.add.sprite(tile.x * TILE + TILE / 2, tile.y * TILE + TILE / 2, 'outdoors', 171).setScale(3).setDepth(3); this.fieldSprites.set(key, ground) }
       ground.setVisible(tile.state !== 'grass').setFrame(171).clearTint()
       if (tile.state === 'watered') ground.setTint(0x9fc5cf)
-      if (tile.crop) this.cropSprites.push(this.add.sprite(tile.x * TILE + TILE / 2, tile.y * TILE + TILE / 2 + 10, 'crops', tile.growth >= 2 ? 4 : 2).setScale(2.2).setDepth(6))
+      if (tile.crop) this.cropSprites.push(this.add.sprite(tile.x * TILE + TILE / 2, tile.y * TILE + TILE / 2 + CROP_SPRITE_OFFSET_Y, 'crops', tile.growth >= 2 ? 4 : 2).setScale(2.2).setDepth(6))
     }
     this.movePlayer(state.player)
+    if (this.lastDay !== undefined && state.day > this.lastDay) this.playDayTransition()
+    this.lastDay = state.day
   }
   private createGround() {
     for (let y = 0; y < 9; y++) for (let x = 0; x < 14; x++) this.add.sprite(x * TILE + TILE / 2, y * TILE + TILE / 2, 'outdoors', 150 + (x + y * 2) % 3).setScale(3).setDepth(0)
@@ -74,6 +82,33 @@ class FarmScene extends Phaser.Scene {
       ['walk-down', 0, 3], ['walk-right', 4, 7], ['walk-up', 8, 11], ['walk-left', 12, 15],
     ] as const
     for (const [key, start, end] of animations) this.anims.create({ key, frames: this.anims.generateFrameNumbers('caroline', { start, end }), frameRate: 8, repeat: -1 })
+  }
+  private playDayTransition() {
+    this.clearDayTransition()
+    const overlay = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0xd96c3f, 0).setOrigin(0).setDepth(100)
+    this.dayTransitionOverlay = overlay
+    const tween = this.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: 2600,
+      ease: 'Sine.easeInOut',
+      onUpdate: (activeTween) => {
+        const frame = getDayTransitionFrame(activeTween.getValue() ?? 0)
+        overlay.setFillStyle(frame.color, frame.alpha)
+      },
+      onComplete: () => {
+        overlay.destroy()
+        if (this.dayTransitionOverlay === overlay) this.dayTransitionOverlay = undefined
+        if (this.dayTransitionTween === tween) this.dayTransitionTween = undefined
+      },
+    })
+    this.dayTransitionTween = tween
+  }
+  private clearDayTransition() {
+    this.dayTransitionTween?.stop()
+    this.dayTransitionTween = undefined
+    this.dayTransitionOverlay?.destroy()
+    this.dayTransitionOverlay = undefined
   }
   private movePlayer(position: { x: number; y: number }) {
     if (!this.playerSprite) return

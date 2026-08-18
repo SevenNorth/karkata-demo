@@ -1,0 +1,9 @@
+.git
+.qa-chrome-profile
+node_modules
+web/dist
+server/dist
+data
+.env*
+coverage
+*.log
