@@ -6,8 +6,10 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import { openDatabase } from './database.js'
 import { prepareProxyRequest, ProxyRequestError, requestProvider, type ProxyConfig } from './proxy.js'
-import { estimateReservationTokens, MemoryQuotaStore, QuotaExceededError, UsageTrackingTransform } from './quota.js'
+import { estimateReservationTokens, QuotaExceededError, SqliteQuotaStore, UsageTrackingTransform } from './quota.js'
+import { SqliteSessionStore, type DemoUser } from './session.js'
 
 loadDevelopmentEnv()
 
@@ -15,10 +17,7 @@ const app = Fastify({ logger: { redact: ['req.headers.authorization', 'req.heade
 await app.register(cookie)
 await app.register(helmet, { contentSecurityPolicy: false })
 
-type DemoUser = { id: string; login: string; avatarUrl: string | null }
-type Session = { user: DemoUser; expiresAt: number }
 const oauthStates = new Map<string, { expiresAt: number }>()
-const sessions = new Map<string, Session>()
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000
 const isProduction = process.env.NODE_ENV === 'production'
@@ -26,18 +25,26 @@ const activeUsers = new Set<string>()
 let activeRequests = 0
 const userWindows = new Map<string, number[]>()
 const ipWindows = new Map<string, number[]>()
-const quotaStore = new MemoryQuotaStore(numberEnv('LLM_DAILY_TOKEN_LIMIT', 30_000))
+const database = openDatabase(resolve(process.cwd(), process.env.SQLITE_PATH ?? 'data/karkata-demo.sqlite'))
+const sessionStore = new SqliteSessionStore(database)
+const quotaStore = new SqliteQuotaStore(database, {
+  userDailyLimitTokens: numberEnv('LLM_DAILY_TOKEN_LIMIT', 30_000),
+  globalDailyLimitTokens: numberEnv('LLM_GLOBAL_DAILY_TOKEN_LIMIT', 300_000),
+})
+sessionStore.purgeExpired()
+quotaStore.recoverStaleReservations(Date.now() - numberEnv('QUOTA_RESERVATION_TTL_MS', 120_000))
+app.addHook('onClose', async () => database.close())
 
 app.get('/health', async () => ({ status: 'ok', service: 'karkata-demo-gateway' }))
 app.get('/', async (_request, reply) => reply.type('text/plain; charset=utf-8').send('Karkata demo gateway is running. Open http://127.0.0.1:5173/ for the web app.'))
 app.get('/api/me', async (request, reply) => {
-  const session = getSession(request.cookies.session)
+  const session = sessionStore.get(request.cookies.session)
   if (!session) return { authenticated: false, user: null }
   reply.setCookie('session', request.cookies.session!, sessionCookieOptions(session.expiresAt))
   return { authenticated: true, user: session.user }
 })
 app.get('/api/usage', async (request, reply) => {
-  const session = getSession(request.cookies.session)
+  const session = sessionStore.get(request.cookies.session)
   if (!session) return reply.code(401).send({ code: 'AUTH_REQUIRED', message: 'Sign in before reading usage.' })
   return quotaStore.snapshot(session.user.id)
 })
@@ -74,7 +81,7 @@ app.get('/auth/github/callback', async (request, reply) => {
     const user: DemoUser = { id: String(profile.id), login: profile.login, avatarUrl: profile.avatar_url ?? null }
     const sessionId = randomUUID()
     const expiresAt = Date.now() + SESSION_TTL_MS
-    sessions.set(sessionId, { user, expiresAt })
+    sessionStore.create(sessionId, user, expiresAt)
     reply.setCookie('session', sessionId, sessionCookieOptions(expiresAt))
     return reply.redirect(frontendUrl())
   } catch (error) {
@@ -84,12 +91,12 @@ app.get('/auth/github/callback', async (request, reply) => {
 })
 app.post('/auth/logout', async (request, reply) => {
   const sessionId = request.cookies.session
-  if (sessionId) sessions.delete(sessionId)
+  if (sessionId) sessionStore.delete(sessionId)
   reply.clearCookie('session', { path: '/' })
   return { authenticated: false }
 })
 app.post('/api/llm/chat/completions', { bodyLimit: 128 * 1024 }, async (request, reply) => {
-  const session = getSession(request.cookies.session)
+  const session = sessionStore.get(request.cookies.session)
   const requestId = randomUUID()
   reply.header('X-Request-Id', requestId)
   if (!session) return reply.code(401).send({ code: 'AUTH_REQUIRED', message: 'Sign in before using the model proxy.', requestId })
@@ -101,7 +108,7 @@ app.post('/api/llm/chat/completions', { bodyLimit: 128 * 1024 }, async (request,
   if (activeUsers.has(session.user.id) || activeRequests >= 10) return reply.code(429).send({ code: 'PROXY_CONCURRENCY_LIMIT', message: 'Another model request is already running.', requestId })
   let reservation
   try {
-    reservation = quotaStore.reserve(session.user.id, estimateReservationTokens(body, config.maxOutputTokens))
+    reservation = quotaStore.reserve(session.user.id, estimateReservationTokens(body, config.maxOutputTokens), { requestId, model: config.model })
     reply.header('X-Quota-Remaining', String(quotaStore.snapshot(session.user.id).remainingTokens))
   } catch (error) {
     if (error instanceof QuotaExceededError) return reply.code(429).send({ code: 'PROXY_QUOTA_EXCEEDED', message: 'Daily token quota exceeded.', requestId })
@@ -109,6 +116,8 @@ app.post('/api/llm/chat/completions', { bodyLimit: 128 * 1024 }, async (request,
   }
   const controller = new AbortController()
   const usageTracker = new UsageTrackingTransform()
+  const startedAt = Date.now()
+  let outcome = 'provider_error'
   const timeout = setTimeout(() => controller.abort(new Error('Proxy timeout')), config.timeoutMs)
   const onDisconnect = () => { if (!reply.raw.writableEnded) controller.abort(new Error('Client disconnected')) }
   request.raw.once('aborted', onDisconnect)
@@ -121,13 +130,15 @@ app.post('/api/llm/chat/completions', { bodyLimit: 128 * 1024 }, async (request,
       'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', 'X-Request-Id': requestId,
     })
     await pipeline(Readable.fromWeb(upstream.body! as never), usageTracker, reply.raw)
+    outcome = 'completed'
     return reply
   } catch (error) {
+    if (controller.signal.aborted) outcome = controller.signal.reason instanceof Error && controller.signal.reason.message === 'Proxy timeout' ? 'timeout' : 'cancelled'
     if (reply.raw.headersSent) { reply.raw.destroy(); return reply }
     return sendProxyError(reply, error, requestId)
   } finally {
     clearTimeout(timeout); request.raw.off('aborted', onDisconnect); reply.raw.off('close', onDisconnect)
-    quotaStore.settle(reservation, usageTracker.totalTokens)
+    quotaStore.settle(reservation, usageTracker.totalTokens, { outcome, durationMs: Date.now() - startedAt })
     activeUsers.delete(session.user.id); activeRequests--
   }
 })
@@ -150,14 +161,6 @@ function consumeState(state: string): boolean {
   const record = oauthStates.get(state)
   oauthStates.delete(state)
   return Boolean(record && record.expiresAt > Date.now())
-}
-
-function getSession(sessionId: string | undefined): Session | null {
-  if (!sessionId) return null
-  const session = sessions.get(sessionId)
-  if (!session) return null
-  if (session.expiresAt <= Date.now()) { sessions.delete(sessionId); return null }
-  return session
 }
 
 function sessionCookieOptions(expiresAt: number) {

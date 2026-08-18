@@ -123,5 +123,5 @@ X-Request-Id: <opaque-id>
 2. 实现 GitHub OAuth、Session 和 `/api/me`。
 3. 已实现固定上游的 SSE Proxy、请求校验、取消、基础内存限流和错误映射；额度结算留在第 5 阶段。
 4. 已接入浏览器 Karkata Agent 与 UI Store，完成真实流式回答、取消、会话投影和登出清理；具体浏览器工具随演示场景补充。
-5. 已加入内存限流、每日 token 额度预占、SSE usage 结算和用量展示；持久化与审计账本待迁移 SQLite。
+5. 已加入每日 token 额度预占、SSE usage 结算和用量展示；Session、额度、全站预算与脱敏审计账本已迁移 SQLite，分钟限流和并发控制仍为进程内状态。
 6. 用测试账户运行真实 Provider smoke，检查取消、预算和 Key 隔离。

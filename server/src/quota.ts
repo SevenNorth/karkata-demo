@@ -1,6 +1,7 @@
 import { Transform, type TransformCallback } from 'node:stream'
 import { StringDecoder } from 'node:string_decoder'
 import { randomUUID } from 'node:crypto'
+import type { DemoDatabase } from './database.js'
 
 export interface QuotaSnapshot {
   dailyLimitTokens: number
@@ -20,6 +21,15 @@ export interface QuotaReservation {
 interface QuotaRecord { bucket: string; usedTokens: number; reservedTokens: number }
 
 export class QuotaExceededError extends Error {}
+
+export interface SqliteQuotaOptions {
+  userDailyLimitTokens: number
+  globalDailyLimitTokens: number
+  now?: () => number
+}
+
+export interface ReservationMetadata { requestId: string; model: string }
+export interface SettlementMetadata { outcome: string; durationMs: number }
 
 export class MemoryQuotaStore {
   readonly #records = new Map<string, QuotaRecord>()
@@ -59,6 +69,120 @@ export class MemoryQuotaStore {
     const record = { bucket, usedTokens: 0, reservedTokens: 0 }
     this.#records.set(userId, record)
     return record
+  }
+}
+
+interface BucketRow { used_tokens: number; reserved_tokens: number }
+interface ReservationRow { id: string; user_id: string; bucket: string; reserved_tokens: number; status: string; created_at: number }
+
+export class SqliteQuotaStore {
+  readonly now: () => number
+
+  constructor(readonly database: DemoDatabase, readonly options: SqliteQuotaOptions) {
+    this.now = options.now ?? Date.now
+  }
+
+  reserve(userId: string, tokens: number, metadata: ReservationMetadata): QuotaReservation {
+    const normalized = Math.max(1, Math.ceil(tokens))
+    const bucket = utcBucket(this.now())
+    const reservation: QuotaReservation = { id: randomUUID(), userId, bucket, tokens: normalized }
+    const reserve = this.database.transaction(() => {
+      this.ensureBucket(bucket, 'user', userId)
+      this.ensureBucket(bucket, 'global', '*')
+      const user = this.bucket(bucket, 'user', userId)
+      const global = this.bucket(bucket, 'global', '*')
+      if (user.used_tokens + user.reserved_tokens + normalized > this.options.userDailyLimitTokens) throw new QuotaExceededError('Daily user token quota exceeded')
+      if (global.used_tokens + global.reserved_tokens + normalized > this.options.globalDailyLimitTokens) throw new QuotaExceededError('Daily global token quota exceeded')
+      this.incrementReserved(bucket, 'user', userId, normalized)
+      this.incrementReserved(bucket, 'global', '*', normalized)
+      this.database.prepare(`
+        INSERT INTO quota_reservations (id, request_id, user_id, bucket, model, reserved_tokens, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'reserved', ?)
+      `).run(reservation.id, metadata.requestId, userId, bucket, metadata.model, normalized, this.now())
+    })
+    reserve.immediate()
+    return reservation
+  }
+
+  settle(reservation: QuotaReservation, actualTokens?: number, metadata: SettlementMetadata = { outcome: 'unknown', durationMs: 0 }): void {
+    const settle = this.database.transaction(() => {
+      const row = this.reservation(reservation.id)
+      if (!row || row.status !== 'reserved') return
+      const charged = validActualTokens(actualTokens) ? Math.ceil(actualTokens) : row.reserved_tokens
+      this.applySettlement(row, charged, metadata, this.now())
+    })
+    settle.immediate()
+  }
+
+  recoverStaleReservations(cutoff: number): number {
+    const recover = this.database.transaction(() => {
+      const rows = this.database.prepare(`
+        SELECT id, user_id, bucket, reserved_tokens, status, created_at
+        FROM quota_reservations WHERE status = 'reserved' AND created_at < ?
+      `).all(cutoff) as ReservationRow[]
+      for (const row of rows) this.applySettlement(row, row.reserved_tokens, { outcome: 'abandoned', durationMs: Math.max(0, this.now() - row.created_at) }, this.now())
+      return rows.length
+    })
+    return recover.immediate()
+  }
+
+  snapshot(userId: string): QuotaSnapshot {
+    const bucket = utcBucket(this.now())
+    const row = this.database.prepare(`
+      SELECT used_tokens, reserved_tokens FROM quota_buckets
+      WHERE bucket = ? AND scope = 'user' AND subject_id = ?
+    `).get(bucket, userId) as BucketRow | undefined
+    const usedTokens = row?.used_tokens ?? 0
+    const reservedTokens = row?.reserved_tokens ?? 0
+    return {
+      dailyLimitTokens: this.options.userDailyLimitTokens,
+      usedTokens,
+      reservedTokens,
+      remainingTokens: Math.max(0, this.options.userDailyLimitTokens - usedTokens - reservedTokens),
+      resetsAt: nextUtcDay(this.now()).toISOString(),
+    }
+  }
+
+  private ensureBucket(bucket: string, scope: 'user' | 'global', subjectId: string): void {
+    this.database.prepare(`
+      INSERT OR IGNORE INTO quota_buckets (bucket, scope, subject_id, used_tokens, reserved_tokens)
+      VALUES (?, ?, ?, 0, 0)
+    `).run(bucket, scope, subjectId)
+  }
+
+  private bucket(bucket: string, scope: 'user' | 'global', subjectId: string): BucketRow {
+    return this.database.prepare(`
+      SELECT used_tokens, reserved_tokens FROM quota_buckets
+      WHERE bucket = ? AND scope = ? AND subject_id = ?
+    `).get(bucket, scope, subjectId) as BucketRow
+  }
+
+  private incrementReserved(bucket: string, scope: 'user' | 'global', subjectId: string, tokens: number): void {
+    this.database.prepare(`
+      UPDATE quota_buckets SET reserved_tokens = reserved_tokens + ?
+      WHERE bucket = ? AND scope = ? AND subject_id = ?
+    `).run(tokens, bucket, scope, subjectId)
+  }
+
+  private reservation(id: string): ReservationRow | undefined {
+    return this.database.prepare(`
+      SELECT id, user_id, bucket, reserved_tokens, status, created_at FROM quota_reservations WHERE id = ?
+    `).get(id) as ReservationRow | undefined
+  }
+
+  private applySettlement(row: ReservationRow, charged: number, metadata: SettlementMetadata, settledAt: number): void {
+    for (const [scope, subjectId] of [['user', row.user_id], ['global', '*']] as const) {
+      this.database.prepare(`
+        UPDATE quota_buckets SET
+          reserved_tokens = MAX(0, reserved_tokens - ?),
+          used_tokens = used_tokens + ?
+        WHERE bucket = ? AND scope = ? AND subject_id = ?
+      `).run(row.reserved_tokens, charged, row.bucket, scope, subjectId)
+    }
+    this.database.prepare(`
+      UPDATE quota_reservations SET status = 'settled', settled_at = ?, charged_tokens = ?, duration_ms = ?, outcome = ?
+      WHERE id = ? AND status = 'reserved'
+    `).run(settledAt, charged, Math.max(0, Math.ceil(metadata.durationMs)), metadata.outcome, row.id)
   }
 }
 
@@ -111,4 +235,8 @@ function utcBucket(timestamp: number): string { return new Date(timestamp).toISO
 function nextUtcDay(timestamp: number): Date {
   const now = new Date(timestamp)
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1))
+}
+
+function validActualTokens(value: number | undefined): value is number {
+  return value !== undefined && Number.isFinite(value) && value >= 0
 }
