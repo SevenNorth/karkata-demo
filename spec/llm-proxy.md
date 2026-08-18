@@ -2,7 +2,7 @@
 
 ## 状态
 
-Draft。本文是 demo 的实现基线；实现前需要根据实际部署环境补充域名、存储和额度数值。
+Implemented。本文是当前 demo 的代理与安全实现基线；正式部署时仍需根据实际环境确定域名、反向代理、密钥管理和额度数值。
 
 ## 目标
 
@@ -45,7 +45,7 @@ POST /auth/logout
 GET  /api/me
 ```
 
-OAuth 回调必须校验一次性 `state` 和严格配置的 `redirect_uri`。回调成功后只创建本地 Session，不把 GitHub access token 发给浏览器。Session Cookie 使用 `HttpOnly; Secure; SameSite=Lax`，并支持过期、撤销和登出。
+OAuth 回调必须校验一次性 `state` 和严格配置的 `redirect_uri`。回调成功后只创建本地 Session，不把 GitHub access token 发给浏览器。Session Cookie 使用 `HttpOnly; SameSite=Lax`，生产 HTTPS 环境额外启用 `Secure`，并支持过期、撤销和登出。
 
 ## LLM Proxy 契约
 

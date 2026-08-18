@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved. This stage replaces process-local Sessions and quota records without changing the browser-facing HTTP contract.
+Implemented. This stage replaces process-local Sessions and quota records without changing the browser-facing HTTP contract.
 
 ## Goals
 
