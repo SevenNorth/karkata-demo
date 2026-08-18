@@ -2,7 +2,7 @@
 
 ## 场景
 
-固定镜头的 14 x 9 格小农场，角色、农田、小屋、种子商店和出货箱同时可见，不滚动地图。用户通过右侧对话框发出自然语言指令，浏览器中的 Karkata Agent 选择农场工具，工具调用本地 `FarmSimulation` 完成状态变更，Phaser 只负责渲染和动画。
+固定镜头的 14 x 9 格小农场，角色、农田、商店、出货箱和农舍房间同时可见，不滚动地图。农舍房间划分为床和仓库，商店支持购买种子和售卖作物。用户通过右侧对话框发出自然语言指令，浏览器中的 Karkata Agent 选择农场工具，工具调用本地 `FarmSimulation` 完成状态变更，Phaser 只负责渲染和动画。
 
 ## 第一版循环
 
@@ -13,7 +13,7 @@
 
 ## 工具
 
-`get_farm_state`、`move_to`、`till_soil`、`plant_seed`、`harvest_crop`、`buy_seeds`、`sell_items`、`sleep`。
+`get_farm_state`、`move_to`、`till_soil`、`plant_seed`、`water_crop`、`harvest_crop`、`buy_seeds`、`sell_items`、`store_items`、`withdraw_items`、`sleep`。
 
 工具不接受 DOM 坐标、不执行网络请求、不修改 Cookie/Storage，也不访问服务器敏感数据。工具结果只返回游戏状态和脱敏的动作消息。完整循环为：耕地、种植、浇水、睡觉推进成长、收获，再售卖。
 
