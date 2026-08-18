@@ -7,6 +7,7 @@ import { resolve } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { prepareProxyRequest, ProxyRequestError, requestProvider, type ProxyConfig } from './proxy.js'
+import { estimateReservationTokens, MemoryQuotaStore, QuotaExceededError, UsageTrackingTransform } from './quota.js'
 
 loadDevelopmentEnv()
 
@@ -25,6 +26,7 @@ const activeUsers = new Set<string>()
 let activeRequests = 0
 const userWindows = new Map<string, number[]>()
 const ipWindows = new Map<string, number[]>()
+const quotaStore = new MemoryQuotaStore(numberEnv('LLM_DAILY_TOKEN_LIMIT', 30_000))
 
 app.get('/health', async () => ({ status: 'ok', service: 'karkata-demo-gateway' }))
 app.get('/', async (_request, reply) => reply.type('text/plain; charset=utf-8').send('Karkata demo gateway is running. Open http://127.0.0.1:5173/ for the web app.'))
@@ -33,6 +35,11 @@ app.get('/api/me', async (request, reply) => {
   if (!session) return { authenticated: false, user: null }
   reply.setCookie('session', request.cookies.session!, sessionCookieOptions(session.expiresAt))
   return { authenticated: true, user: session.user }
+})
+app.get('/api/usage', async (request, reply) => {
+  const session = getSession(request.cookies.session)
+  if (!session) return reply.code(401).send({ code: 'AUTH_REQUIRED', message: 'Sign in before reading usage.' })
+  return quotaStore.snapshot(session.user.id)
 })
 app.get('/auth/github', async (_request, reply) => {
   const config = githubConfig()
@@ -88,11 +95,20 @@ app.post('/api/llm/chat/completions', { bodyLimit: 128 * 1024 }, async (request,
   if (!session) return reply.code(401).send({ code: 'AUTH_REQUIRED', message: 'Sign in before using the model proxy.', requestId })
   const config = proxyConfig()
   if (!config) return reply.code(503).send({ code: 'PROXY_NOT_CONFIGURED', message: 'The model proxy is not configured.', requestId })
-  if (!takeRateSlot(userWindows, session.user.id, 3) || !takeRateSlot(ipWindows, request.ip, 10)) return reply.code(429).send({ code: 'PROXY_RATE_LIMIT', message: 'Too many model requests.', requestId })
-  if (activeUsers.has(session.user.id) || activeRequests >= 10) return reply.code(429).send({ code: 'PROXY_CONCURRENCY_LIMIT', message: 'Another model request is already running.', requestId })
   let body: Record<string, unknown>
   try { body = prepareProxyRequest(request.body, config) } catch (error) { return sendProxyError(reply, error, requestId) }
+  if (!takeRateSlot(userWindows, session.user.id, 3) || !takeRateSlot(ipWindows, request.ip, 10)) return reply.code(429).send({ code: 'PROXY_RATE_LIMIT', message: 'Too many model requests.', requestId })
+  if (activeUsers.has(session.user.id) || activeRequests >= 10) return reply.code(429).send({ code: 'PROXY_CONCURRENCY_LIMIT', message: 'Another model request is already running.', requestId })
+  let reservation
+  try {
+    reservation = quotaStore.reserve(session.user.id, estimateReservationTokens(body, config.maxOutputTokens))
+    reply.header('X-Quota-Remaining', String(quotaStore.snapshot(session.user.id).remainingTokens))
+  } catch (error) {
+    if (error instanceof QuotaExceededError) return reply.code(429).send({ code: 'PROXY_QUOTA_EXCEEDED', message: 'Daily token quota exceeded.', requestId })
+    throw error
+  }
   const controller = new AbortController()
+  const usageTracker = new UsageTrackingTransform()
   const timeout = setTimeout(() => controller.abort(new Error('Proxy timeout')), config.timeoutMs)
   const onDisconnect = () => { if (!reply.raw.writableEnded) controller.abort(new Error('Client disconnected')) }
   request.raw.once('aborted', onDisconnect)
@@ -104,13 +120,14 @@ app.post('/api/llm/chat/completions', { bodyLimit: 128 * 1024 }, async (request,
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', 'X-Request-Id': requestId,
     })
-    await pipeline(Readable.fromWeb(upstream.body! as never), reply.raw)
+    await pipeline(Readable.fromWeb(upstream.body! as never), usageTracker, reply.raw)
     return reply
   } catch (error) {
     if (reply.raw.headersSent) { reply.raw.destroy(); return reply }
     return sendProxyError(reply, error, requestId)
   } finally {
     clearTimeout(timeout); request.raw.off('aborted', onDisconnect); reply.raw.off('close', onDisconnect)
+    quotaStore.settle(reservation, usageTracker.totalTokens)
     activeUsers.delete(session.user.id); activeRequests--
   }
 })

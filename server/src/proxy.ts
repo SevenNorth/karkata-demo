@@ -21,7 +21,7 @@ export function prepareProxyRequest(input: unknown, config: ProxyConfig): Record
   const messages = input.messages.map(validateMessage)
   const tools = input.tools === undefined ? undefined : validateTools(input.tools)
   return {
-    model: config.model, stream: true, max_tokens: config.maxOutputTokens, messages,
+    model: config.model, stream: true, stream_options: { include_usage: true }, max_tokens: config.maxOutputTokens, messages,
     ...(tools ? { tools } : {}),
     ...(tools?.length ? { tool_choice: 'auto', parallel_tool_calls: false } : {}),
   }

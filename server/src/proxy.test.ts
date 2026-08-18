@@ -14,7 +14,7 @@ describe('prepareProxyRequest', () => {
       tools: [],
     }, config)
 
-    expect(body).toEqual({ model: 'server-model', stream: true, max_tokens: 1500, messages: [{ role: 'user', content: 'hello' }], tools: [] })
+    expect(body).toEqual({ model: 'server-model', stream: true, stream_options: { include_usage: true }, max_tokens: 1500, messages: [{ role: 'user', content: 'hello' }], tools: [] })
   })
 
   it('rejects unknown fields and non-streaming requests', () => {
