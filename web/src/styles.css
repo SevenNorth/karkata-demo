@@ -10,6 +10,9 @@
 .stop-button { width: 29px; height: 29px; padding: 0; border: 1px solid #7f1d1d; border-radius: 7px; color: #fecaca; background: #5b2028; display: inline-flex; align-items: center; justify-content: center; margin-left: 8px; line-height: 0; }.stop-button:hover { color: #fff; background: #991b1b; }
 .stop-button svg, .send-button svg { display: block; flex: 0 0 auto; margin: 0; }
 .send-button svg { transform: translate(-1px, 1px); }
+.user-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #334155; border-radius: 999px; background: #121a28; color: #cbd5e1; padding: 3px 9px 3px 4px; font-size: 11px; }
+.user-chip img { width: 20px; height: 20px; border-radius: 50%; }
+.user-chip:hover { border-color: #6ee7b7; color: #f8fafc; }
 .send-button { width: 29px; height: 29px; padding: 0; display: inline-flex; align-items: center; justify-content: center; margin-left: 6px; line-height: 0; }
 
 /* Embedded panel layout: the agent owns the left rail while the canvas fills the rest. */
