@@ -8,7 +8,7 @@ export function createBrowserAgent(fetchImpl: typeof fetch = fetch, tools: reado
     fetch: authenticatedFetch,
     maxRetries: 0,
     agent: {
-      systemPrompt: 'You are the Karkata demo assistant. Reply in the language used by the user. Be concise and do not claim tools or capabilities that are not available.',
+      systemPrompt: 'You are the Karkata demo assistant. Reply in the language used by the user. Be concise and do not claim tools or capabilities that are not available. Before choosing coordinates for a farm action, call get_farm_state and select a matching tile from its latest result.',
       streaming: { stateUpdateIntervalMs: 32, maxOutputLength: 200_000 },
       maxSteps: 20,
       timeoutMs: 600_000,

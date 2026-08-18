@@ -58,6 +58,27 @@
 .message-list::-webkit-scrollbar-track { background: transparent; }
 .message-list::-webkit-scrollbar-thumb { background: #52627a; border: 2px solid transparent; border-radius: 999px; background-clip: padding-box; }
 .message-list::-webkit-scrollbar-thumb:hover { background: #71839d; border: 2px solid transparent; background-clip: padding-box; }
+.message-bubble { min-width: 0; overflow-wrap: anywhere; }
+.markdown-content > :first-child { margin-top: 0; }
+.markdown-content > :last-child { margin-bottom: 0; }
+.markdown-content p { margin: 0 0 8px; }
+.markdown-content h1, .markdown-content h2, .markdown-content h3, .markdown-content h4 { margin: 12px 0 6px; color: #f1f5f9; font-size: 13px; line-height: 1.35; }
+.markdown-content h1 { font-size: 15px; }
+.markdown-content h2 { font-size: 14px; }
+.markdown-content ul, .markdown-content ol { margin: 6px 0 8px; padding-left: 20px; }
+.markdown-content li + li { margin-top: 3px; }
+.markdown-content blockquote { margin: 8px 0; padding-left: 9px; color: #aebbd0; border-left: 2px solid #3d806f; }
+.markdown-content code { padding: 1px 4px; color: #b8f4dc; background: #0c1720; border-radius: 3px; font-size: 11px; }
+.markdown-content pre { max-width: 100%; margin: 8px 0; padding: 9px; overflow: auto; background: #0a111d; border: 1px solid #28364a; border-radius: 5px; }
+.markdown-content pre code { padding: 0; color: #dbe4f0; background: transparent; }
+.markdown-content a { color: #7dd3fc; text-decoration: underline; text-underline-offset: 2px; }
+.markdown-content hr { margin: 10px 0; border: 0; border-top: 1px solid #334155; }
+.markdown-table-scroll { width: 100%; margin: 8px 0; overflow-x: auto; scrollbar-width: thin; scrollbar-color: #52627a transparent; }
+.markdown-content table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 11px; }
+.markdown-content th, .markdown-content td { padding: 5px 7px; white-space: nowrap; text-align: left; border: 1px solid #3a4960; }
+.markdown-content th { color: #e7f5ec; background: #14272a; }
+.markdown-content td { background: rgba(12, 20, 33, .45); }
+.markdown-content input[type="checkbox"] { margin: 0 5px 0 0; accent-color: #6ee7b7; }
 @media (max-width: 800px) { .canvas-area { padding: 0; min-height: 58vh; } }
 @media (max-width: 800px) {
   .workspace.panel-embedded .chat-panel { height: 52vh; }
