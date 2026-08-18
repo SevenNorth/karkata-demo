@@ -121,8 +121,7 @@ X-Request-Id: <opaque-id>
 
 1. 建立前后端 TypeScript/Vite 服务骨架、共享类型和本地假 Provider。
 2. 实现 GitHub OAuth、Session 和 `/api/me`。
-3. 实现固定上游的 SSE Proxy、请求校验、取消和错误映射。
-4. 接入浏览器 Karkata Agent 与 UI Store，验证流式、工具和会话。
+3. 已实现固定上游的 SSE Proxy、请求校验、取消、基础内存限流和错误映射；额度结算留在第 5 阶段。
+4. 已接入浏览器 Karkata Agent 与 UI Store，完成真实流式回答、取消、会话投影和登出清理；具体浏览器工具随演示场景补充。
 5. 加入 Redis 或等价存储的限流、额度预占、结算和审计。
 6. 用测试账户运行真实 Provider smoke，检查取消、预算和 Key 隔离。
-

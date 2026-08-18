@@ -9,7 +9,8 @@
     "build": "npm run build:web && npm run build:server",
     "build:web": "tsc -p web/tsconfig.json && vite build --config web/vite.config.ts",
     "build:server": "tsc -p server/tsconfig.json",
-    "typecheck": "tsc -p web/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit"
+    "typecheck": "tsc -p web/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit",
+    "test": "vitest run server/src web/src"
   },
   "dependencies": {
     "@karkata-ai/core": "file:../karkata/packages/core",
@@ -32,6 +33,7 @@
     "concurrently": "^9.1.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "vitest": "^4.1.10"
   }
 }

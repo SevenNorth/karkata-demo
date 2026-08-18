@@ -11,8 +11,15 @@
 .stop-button svg, .send-button svg { display: block; flex: 0 0 auto; margin: 0; }
 .send-button svg { transform: translate(-1px, 1px); }
 .user-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #334155; border-radius: 999px; background: #121a28; color: #cbd5e1; padding: 3px 9px 3px 4px; font-size: 11px; }
-.user-chip img { width: 20px; height: 20px; border-radius: 50%; }
 .user-chip:hover { border-color: #6ee7b7; color: #f8fafc; }
+.chat-empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; color: #718097; font-size: 12px; }
+.message-bubble.streaming { border-color: #2c7a68; }
+.message-bubble.incomplete { border-style: dashed; color: #94a3b8; }
+.tool-row { align-self: center; color: #8290a7; background: #151f2f; border: 1px solid #2c3a50; border-radius: 6px; padding: 5px 8px; font-size: 10px; }
+.tool-row.error, .agent-error, .submit-error { color: #fecaca; }
+.agent-error { border: 1px solid #7f1d1d; background: #3f1820; border-radius: 7px; padding: 9px 10px; font-size: 11px; }
+.submit-error { margin-top: 6px; font-size: 10px; }
+.stop-button:disabled, .send-button:disabled { opacity: .38; cursor: not-allowed; }
 .send-button { width: 29px; height: 29px; padding: 0; display: inline-flex; align-items: center; justify-content: center; margin-left: 6px; line-height: 0; }
 
 /* Embedded panel layout: the agent owns the left rail while the canvas fills the rest. */
