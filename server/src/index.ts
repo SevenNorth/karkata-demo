@@ -43,7 +43,6 @@ quotaStore.recoverStaleReservations(Date.now() - numberEnv('QUOTA_RESERVATION_TT
 app.addHook('onClose', async () => database.close())
 
 app.get('/health', async () => ({ status: 'ok', service: 'karkata-demo-gateway' }))
-app.get('/', async (_request, reply) => reply.type('text/plain; charset=utf-8').send('Karkata demo gateway is running. Open http://127.0.0.1:5173/ for the web app.'))
 app.get('/api/me', async (request, reply) => {
   const session = sessionStore.get(request.cookies.session)
   if (!session) return { authenticated: false, user: null }
